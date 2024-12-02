@@ -160,6 +160,16 @@ func (sched *Scheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}) {
 
 	logger.V(4).Info("Update event for unscheduled pod", "pod", klog.KObj(newPod))
 	sched.SchedulingQueue.Update(logger, oldPod, newPod)
+	if hasNominatedNodeName(oldPod, newPod) {
+		// Nominated Node changed in Pod, so we need to treat it as if the Pod was deleted,
+		// because the pod was assumed and it might have blocked scheduling of other pods.
+		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(logger, framework.EventAssignedPodDelete, oldPod, nil, nil)
+	}
+}
+
+// nominatedNodeName returns nominated node name of a Pod.
+func hasNominatedNodeName(oldPod, newPod *v1.Pod) bool {
+	return oldPod.Status.NominatedNodeName != newPod.Status.NominatedNodeName
 }
 
 func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
