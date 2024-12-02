@@ -161,15 +161,15 @@ func (sched *Scheduler) updatePodInSchedulingQueue(oldObj, newObj interface{}) {
 	logger.V(4).Info("Update event for unscheduled pod", "pod", klog.KObj(newPod))
 	sched.SchedulingQueue.Update(logger, oldPod, newPod)
 	if hasNominatedNodeNameChanged(oldPod, newPod) {
-		// Nominated Node changed in Pod, so we need to treat it as if the Pod was deleted,
-		// because the pod was assumed and it might have blocked scheduling of other pods.
+		// Nominated node changed in pod, so we need to treat it as if the pod was deleted,
+		// because the lower or equal priority pods treat such a pod as if it was assigned.
 		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(logger, framework.EventAssignedPodDelete, oldPod, nil, nil)
 	}
 }
 
-// nominatedNodeName returns nominated node name of a Pod.
+// hasNominatedNodeNameChanged returns true when nominated node name has existed but changed.
 func hasNominatedNodeNameChanged(oldPod, newPod *v1.Pod) bool {
-	return oldPod.Status.NominatedNodeName != newPod.Status.NominatedNodeName
+	return len(oldPod.Status.NominatedNodeName) > 0 && oldPod.Status.NominatedNodeName != newPod.Status.NominatedNodeName
 }
 
 func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
@@ -205,6 +205,8 @@ func (sched *Scheduler) deletePodFromSchedulingQueue(obj interface{}) {
 	// If a waiting pod is rejected, it indicates it's previously assumed and we're
 	// removing it from the scheduler cache. In this case, signal a AssignedPodDelete
 	// event to immediately retry some unscheduled Pods.
+	// Similarly when a pod that had nominated node is deleted, it can unblock scheduling of other pods,
+	// because the lower or equal priority pods treat such a pod as if it was assigned.
 	if fwk.RejectWaitingPod(pod.UID) || pod.Status.NominatedNodeName != "" {
 		sched.SchedulingQueue.MoveAllToActiveOrBackoffQueue(logger, framework.EventAssignedPodDelete, pod, nil, nil)
 	}
